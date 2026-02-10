@@ -9,6 +9,7 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using FileManager.Azure.Dictionary;
 using FileManager.Azure.Dtos;
+using FileManager.Azure.Helpers;
 using FileManager.Azure.Interfaces;
 using FileManager.Azure.Models;
 using Microsoft.AspNetCore.Http;
@@ -71,7 +72,7 @@ namespace FileManager.Azure.Services
                 DateModified = properties.LastModified,
                 DateCreated = properties.CreatedOn,
                 FileSize = properties.ContentLength,
-                Name = HttpUtility.UrlDecode(properties.Metadata["FileName"]),
+                Name = properties.GetFileName(blobClient),
                 BlobType = AzureBlobType.File,
                 StoragePath = blobClient.Uri.ToString(),
                 Path = path
@@ -127,7 +128,7 @@ namespace FileManager.Azure.Services
                     DateModified = properties.LastModified,
                     DateCreated = properties.CreatedOn,
                     FileSize = properties.ContentLength,
-                    Name = HttpUtility.UrlDecode(properties.Metadata["FileName"]),
+                    Name = properties.GetFileName(blobClient),
                     BlobType = AzureBlobType.File,
                     StoragePath = blobClient.Uri.ToString(),
                     Path = blobClient.Name
@@ -137,26 +138,35 @@ namespace FileManager.Azure.Services
             }
             else
             {
-                var blobs = container.GetBlobs(BlobTraits.All, BlobStates.All, path);
-                List<Task> tasks = new List<Task>();
-                foreach (var blob in blobs)
+                var blobs = container.GetBlobsAsync(new GetBlobsOptions()
                 {
-                    var blobClient = await GetBlobClient(blob.Name);
+                    Prefix = path
+                });
 
-                    deletedFiles.Add(new BlobDto
+                List<Task> tasks = new List<Task>();
+                var pages = blobs.AsPages();
+                await foreach (var page in pages)
+                {
+                    foreach (var blob in page.Values)
                     {
-                        ContentType = blob.Properties.ContentType,
-                        DateModified = blob.Properties.LastModified,
-                        DateCreated = blob.Properties.CreatedOn,
-                        FileSize = (long)blob.Properties.ContentLength,
-                        Name = HttpUtility.UrlDecode(blob.Metadata["FileName"]),
-                        BlobType = AzureBlobType.File,
-                        StoragePath = blobClient.Uri.ToString(),
-                        Path = blob.Name
-                    });
+                        var blobClient = await GetBlobClient(blob.Name);
 
-                    tasks.Add(blobClient.DeleteIfExistsAsync());
+                        deletedFiles.Add(new BlobDto
+                        {
+                            ContentType = blob.Properties.ContentType,
+                            DateModified = blob.Properties.LastModified,
+                            DateCreated = blob.Properties.CreatedOn,
+                            FileSize = (long)blob.Properties.ContentLength,
+                            Name = blob.GetFileName(),
+                            BlobType = AzureBlobType.File,
+                            StoragePath = blobClient.Uri.ToString(),
+                            Path = blob.Name
+                        });
+
+                        tasks.Add(blobClient.DeleteIfExistsAsync());
+                    }
                 }
+
 
                 Task.WaitAll(tasks.ToArray());
             }
@@ -203,7 +213,7 @@ namespace FileManager.Azure.Services
                 DateModified = properties.LastModified,
                 DateCreated = properties.CreatedOn,
                 FileSize = properties.ContentLength,
-                Name = HttpUtility.UrlDecode(properties.Metadata["FileName"]),
+                Name = properties.GetFileName(blobClient),
                 BlobType = AzureBlobType.File,
                 StoragePath = blobClient.Uri.ToString(),
                 Path = blobClient.Name
@@ -218,7 +228,10 @@ namespace FileManager.Azure.Services
         public async Task<IEnumerable<BlobDto>> GetFolderFiles(string path)
         {
             var container = await GetContainer();
-            var blobs = container.GetBlobsAsync(BlobTraits.All, BlobStates.All, path);
+            var blobs = container.GetBlobsAsync(new GetBlobsOptions()
+            {
+                Prefix = path
+            });
 
             List<BlobDto> files = new List<BlobDto>();
             await foreach (var blob in blobs)
@@ -230,7 +243,7 @@ namespace FileManager.Azure.Services
                     DateModified = blob.Properties.LastModified,
                     DateCreated = blob.Properties.CreatedOn,
                     FileSize = (long)blob.Properties.ContentLength,
-                    Name = HttpUtility.UrlDecode(blob.Metadata["FileName"]),
+                    Name = blob.GetFileName(),
                     BlobType = AzureBlobType.File,
                     StoragePath = client.Uri.ToString(),
                     Path = blob.Name
@@ -266,7 +279,11 @@ namespace FileManager.Azure.Services
         public async Task<IEnumerable<BlobDto>> GetChildFolders(string prefix)
         {
             var container = await GetContainer();
-            var blobs = container.GetBlobsByHierarchyAsync(BlobTraits.All, BlobStates.All, "/", prefix);
+            var blobs = container.GetBlobsByHierarchyAsync(new GetBlobsByHierarchyOptions()
+            {
+                Prefix = prefix,
+                Delimiter = "/"
+            });
 
             List<BlobDto> folders = new List<BlobDto>();
 
@@ -312,7 +329,10 @@ namespace FileManager.Azure.Services
             string oldPath = folder.Path;
             string newPath = oldPath.Replace(folder.Name, newName);
 
-            var pages = container.GetBlobsByHierarchyAsync(prefix: oldPath);
+            var pages = container.GetBlobsByHierarchyAsync(new GetBlobsByHierarchyOptions()
+            {
+                Prefix = folder.Path
+            });
             var tasks = new List<Task>();
             // List the blobs within the folder
             await foreach (BlobHierarchyItem blobItem in pages)
@@ -431,7 +451,10 @@ namespace FileManager.Azure.Services
             string oldPath = folder.Path;
             string newPath = oldPath.Replace(folder.Name, path);
 
-            var blobs = container.GetBlobsAsync(prefix: folder.Path);
+            var blobs = container.GetBlobsAsync(new GetBlobsOptions()
+            {
+                Prefix = folder.Path
+            });
             // List the blobs within the folder
             await foreach (BlobItem blobItem in blobs)
             {
@@ -512,7 +535,7 @@ namespace FileManager.Azure.Services
                         DateModified = properties.LastModified,
                         DateCreated = properties.CreatedOn,
                         FileSize = properties.ContentLength,
-                        Name = HttpUtility.UrlDecode(properties.Metadata["FileName"]),
+                        Name = properties.GetFileName(blobClient),
                         BlobType = AzureBlobType.File,
                         StoragePath = blobClient.Uri.ToString(),
                         Path = blobItem.Prefix

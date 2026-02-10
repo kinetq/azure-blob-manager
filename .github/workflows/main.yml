@@ -17,12 +17,12 @@ jobs:
     - name: Setup Dotnet
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: '7.0.x'
+        dotnet-version: '9.0.x'
         
     - name: Setup node
       uses: actions/setup-node@v3
       with:
-        node-version: 18
+        node-version: 24
     
     - name: Install azurite
       run: npm install -g azurite    

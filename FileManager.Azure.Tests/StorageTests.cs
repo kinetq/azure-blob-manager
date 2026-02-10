@@ -1,4 +1,12 @@
-﻿using System;
+﻿// Pseudocode plan:
+// 1. Scan the file for all NUnit assertion usages.
+// 2. Replace `Assert.IsTrue`/`Assert.IsFalse` with `Assert.That(..., Is.True/Is.False)`.
+// 3. Replace `Assert.NotNull`/`Assert.IsNull` with `Assert.That(..., Is.Not.Null/Is.Null)`.
+// 4. Replace `Assert.AreEqual` with `Assert.That(actual, Is.EqualTo(expected))`.
+// 5. Keep existing `Assert.That` calls unchanged unless needed.
+// 6. Output the full updated file.
+
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -42,7 +50,7 @@ namespace FileManager.Azure.Tests
             var configMock = new Mock<IOptions<StorageOptions>>();
             configMock.SetupGet(x => x.Value).Returns(() => new StorageOptions
             {
-                StorageConnStr = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:7777/devstoreaccount1;"
+                StorageConnStr = "AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;DefaultEndpointsProtocol=http;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
             });
 
             var builder = new ConfigurationBuilder();
@@ -77,27 +85,27 @@ namespace FileManager.Azure.Tests
         {
             string tempFile = CreateTempFile();
             var uploadedBytes = File.ReadAllBytes(tempFile);
-            
+
             string name = Path.GetFileNameWithoutExtension(tempFile);
             string path = $"/temp/{name}.tmp";
 
             await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
-            Assert.IsTrue(await _fileManagerService.FileExists(path));
-        }        
-        
+            Assert.That(await _fileManagerService.FileExists(path), Is.True);
+        }
+
         [Test]
         public async Task Test_Get_File()
         {
             string tempFile = CreateTempFile();
             var uploadedBytes = File.ReadAllBytes(tempFile);
-            
+
             string name = Path.GetFileNameWithoutExtension(tempFile);
             string path = $"/temp/{name}.tmp";
 
             await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
 
             var fileBlob = await _fileManagerService.GetFile(path);
-            Assert.NotNull(fileBlob);
+            Assert.That(fileBlob, Is.Not.Null);
         }
 
         [Test]
@@ -105,58 +113,58 @@ namespace FileManager.Azure.Tests
         {
             string tempFile = CreateTempFile();
             var uploadedBytes = File.ReadAllBytes(tempFile);
-            
+
             string name = Path.GetFileNameWithoutExtension(tempFile);
             string path = $"/temp/{name}.tmp";
 
             await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
-            Assert.IsTrue(await _fileManagerService.FileExists(path));
+            Assert.That(await _fileManagerService.FileExists(path), Is.True);
 
             await _fileManagerService.DeleteFile(path);
-            Assert.IsFalse(await _fileManagerService.FileExists(path));
-        }        
-        
+            Assert.That(await _fileManagerService.FileExists(path), Is.False);
+        }
+
         [Test]
         public async Task Test_Rename_File()
         {
             string tempFile = CreateTempFile();
             var uploadedBytes = File.ReadAllBytes(tempFile);
-            
+
             string name = Path.GetFileNameWithoutExtension(tempFile);
             string path = $"/temp/{name}.tmp";
 
             var blobDto = await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
-            Assert.IsTrue(await _fileManagerService.FileExists(path));
+            Assert.That(await _fileManagerService.FileExists(path), Is.True);
 
             await _fileManagerService.RenameFile(blobDto, "my-new-name.tmp");
 
             var renamedBlogDto = await _fileManagerService.GetFile("/temp/my-new-name.tmp");
-            Assert.NotNull(renamedBlogDto);
-        }        
-        
+            Assert.That(renamedBlogDto, Is.Not.Null);
+        }
+
         [Test]
         public async Task Test_Move_File()
         {
             string tempFile = CreateTempFile();
             var uploadedBytes = File.ReadAllBytes(tempFile);
-            
+
             string name = Path.GetFileNameWithoutExtension(tempFile);
             string path = $"/temp/{name}.tmp";
 
             var blobDto = await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
-            Assert.IsTrue(await _fileManagerService.FileExists(path));
+            Assert.That(await _fileManagerService.FileExists(path), Is.True);
 
             await _fileManagerService.MoveFile(blobDto, "/temp2/");
 
             var movedBlobDto = await _fileManagerService.GetFile($"/temp2/{name}.tmp");
-            Assert.NotNull(movedBlobDto);
+            Assert.That(movedBlobDto, Is.Not.Null);
         }
 
         [Test]
         public async Task Test_Return_Null_If_Not_Exists()
         {
             var blobDto = await _fileManagerService.GetFile("doesnt-exist.tmp");
-            Assert.IsNull(blobDto);
+            Assert.That(blobDto, Is.Null);
         }
 
         [Test]
@@ -172,7 +180,7 @@ namespace FileManager.Azure.Tests
                 string path = $"/temp/{name}.tmp";
 
                 await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
-                Assert.IsTrue(await _fileManagerService.FileExists(path));
+                Assert.That(await _fileManagerService.FileExists(path), Is.True);
             }
 
             await _fileManagerService.DeleteFile("temp/");
@@ -180,7 +188,7 @@ namespace FileManager.Azure.Tests
             {
                 string name = Path.GetFileNameWithoutExtension(file);
                 string path = $"/temp/{name}.tmp";
-                Assert.IsFalse(await _fileManagerService.FileExists(path));
+                Assert.That(await _fileManagerService.FileExists(path), Is.False);
             }
         }
 
@@ -197,11 +205,11 @@ namespace FileManager.Azure.Tests
                 string path = $"/temp/{name}.tmp";
 
                 await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
-                Assert.IsTrue(await _fileManagerService.FileExists(path));
+                Assert.That(await _fileManagerService.FileExists(path), Is.True);
             }
 
             var files = await _fileManagerService.GetFolderFiles("temp/");
-            Assert.AreEqual(5, files.Count());
+            Assert.That(files.Count(), Is.EqualTo(5));
         }
 
         [Test]
@@ -217,7 +225,7 @@ namespace FileManager.Azure.Tests
                 string path = $"/temp/{name}.tmp";
 
                 await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
-                Assert.IsTrue(await _fileManagerService.FileExists(path));
+                Assert.That(await _fileManagerService.FileExists(path), Is.True);
             }
 
             await _fileManagerService.RenameFolder(new BlobDto
@@ -228,7 +236,7 @@ namespace FileManager.Azure.Tests
             }, "temp2");
 
             var files = await _fileManagerService.GetFolderFiles("temp2");
-            Assert.AreEqual(files.Count(), 5);
+            Assert.That(files.Count(), Is.EqualTo(5));
         }
 
         [Test]
@@ -244,7 +252,7 @@ namespace FileManager.Azure.Tests
                 string path = $"/temp/{name}.tmp";
 
                 await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
-                Assert.IsTrue(await _fileManagerService.FileExists(path));
+                Assert.That(await _fileManagerService.FileExists(path), Is.True);
             }
 
             await _fileManagerService.MoveFolder(new BlobDto
@@ -255,7 +263,7 @@ namespace FileManager.Azure.Tests
             }, "temp2");
 
             var files = await _fileManagerService.GetFolderFiles("temp2/");
-            Assert.AreEqual(5, files.Count());
+            Assert.That(files.Count(), Is.EqualTo(5));
         }
 
         [Test]
@@ -267,7 +275,7 @@ namespace FileManager.Azure.Tests
             }
 
             var files = await _fileManagerService.GetChildFolders("temp/");
-            Assert.AreEqual(5, files.Count());
+            Assert.That(files.Count(), Is.EqualTo(5));
         }
 
         private string CreateTempFile()
