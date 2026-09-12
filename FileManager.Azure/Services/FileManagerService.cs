@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Web;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Azure.Storage.Blobs.Specialized;
 using FileManager.Azure.Dictionary;
 using FileManager.Azure.Dtos;
 using FileManager.Azure.Helpers;
@@ -107,8 +108,9 @@ namespace FileManager.Azure.Services
         /// Deletes a file or folder based on the path specified
         /// </summary>
         /// <param name="path"></param>
+        /// <param name="removeLease">When true, forcefully breaks any active lease on blobs before deleting.</param>
         /// <returns></returns>
-        public async Task<List<BlobDto>> DeleteFile(string path)
+        public async Task<List<BlobDto>> DeleteFile(string path, bool removeLease = false)
         {
             var container = await GetContainer();
 
@@ -119,6 +121,11 @@ namespace FileManager.Azure.Services
                 if (_storageOptions.TakeSnapshots)
                 {
                     await blobClient.CreateSnapshotAsync();
+                }
+
+                if (removeLease)
+                {
+                    await BreakLeaseIfActiveAsync(blobClient);
                 }
 
                 BlobProperties properties = await blobClient.GetPropertiesAsync();
@@ -151,6 +158,11 @@ namespace FileManager.Azure.Services
                     {
                         var blobClient = await GetBlobClient(blob.Name);
 
+                        if (removeLease)
+                        {
+                            await BreakLeaseIfActiveAsync(blobClient);
+                        }
+
                         deletedFiles.Add(new BlobDto
                         {
                             ContentType = blob.Properties.ContentType,
@@ -167,11 +179,23 @@ namespace FileManager.Azure.Services
                     }
                 }
 
-
                 Task.WaitAll(tasks.ToArray());
             }
 
             return deletedFiles;
+        }
+
+        /// <summary>
+        /// Breaks an active or breaking lease on a blob immediately.
+        /// </summary>
+        private static async Task BreakLeaseIfActiveAsync(BlobClient blobClient)
+        {
+            BlobProperties properties = await blobClient.GetPropertiesAsync();
+            if (properties.LeaseState == LeaseState.Leased || properties.LeaseState == LeaseState.Breaking)
+            {
+                var leaseClient = blobClient.GetBlobLeaseClient();
+                await leaseClient.BreakAsync(breakPeriod: TimeSpan.Zero);
+            }
         }
 
         /// <summary>

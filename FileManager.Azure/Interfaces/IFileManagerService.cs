@@ -14,7 +14,7 @@ namespace FileManager.Azure.Interfaces
         Task<BlobDto> GetFolder(string path);
         BlobDto GetRootFolder();
         Task<bool> FileExists(string path);
-        Task<List<BlobDto>> DeleteFile(string path);
+        Task<List<BlobDto>> DeleteFile(string path, bool removeLease = false);
         Task<BlobDto> AddFile(string path, string contentType, string name, byte[] file);
         Task<IEnumerable<BlobDto>> GetFolderFiles(string path);
         Task<IEnumerable<BlobDto>> GetChildFolders(string prefix);

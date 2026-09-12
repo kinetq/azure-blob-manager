@@ -13,6 +13,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Security.Principal;
 using System.Threading.Tasks;
+using Azure.Storage.Blobs.Specialized;
 using FileManager.Azure.Dictionary;
 using FileManager.Azure.Dtos;
 using FileManager.Azure.Helpers;
@@ -122,6 +123,68 @@ namespace FileManager.Azure.Tests
 
             await _fileManagerService.DeleteFile(path);
             Assert.That(await _fileManagerService.FileExists(path), Is.False);
+        }
+
+        [Test]
+        public async Task Test_Delete_File_With_Remove_Lease()
+        {
+            string tempFile = CreateTempFile();
+            var uploadedBytes = File.ReadAllBytes(tempFile);
+
+            string name = Path.GetFileNameWithoutExtension(tempFile);
+            string path = $"/temp/{name}.tmp";
+
+            await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
+            Assert.That(await _fileManagerService.FileExists(path), Is.True);
+
+            // Acquire a lease on the blob to simulate a locked blob
+            var container = await _fileManagerService.GetContainer();
+            var blobClient = container.GetBlobClient(path.TrimStart('/'));
+            var leaseClient = blobClient.GetBlobLeaseClient();
+            await leaseClient.AcquireAsync(duration: TimeSpan.FromSeconds(15));
+
+            // Delete with removeLease = true should break the lease and succeed
+            var deletedFiles = await _fileManagerService.DeleteFile(path, removeLease: true);
+
+            Assert.That(deletedFiles, Has.Count.EqualTo(1));
+            Assert.That(await _fileManagerService.FileExists(path), Is.False);
+        }
+
+        [Test]
+        public async Task Test_Delete_Folder_With_Remove_Lease()
+        {
+            var files = GetFiles();
+
+            foreach (var file in files)
+            {
+                var uploadedBytes = File.ReadAllBytes(file);
+
+                string name = Path.GetFileNameWithoutExtension(file);
+                string path = $"/temp/{name}.tmp";
+
+                await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
+                Assert.That(await _fileManagerService.FileExists(path), Is.True);
+            }
+
+            // Acquire a lease on each blob to simulate locked blobs
+            var container = await _fileManagerService.GetContainer();
+            await foreach (var blobItem in container.GetBlobsAsync(global::Azure.Storage.Blobs.Models.BlobTraits.None, global::Azure.Storage.Blobs.Models.BlobStates.None, "temp/", default))
+            {
+                var blobClient = container.GetBlobClient(blobItem.Name);
+                var leaseClient = blobClient.GetBlobLeaseClient();
+                await leaseClient.AcquireAsync(duration: TimeSpan.FromSeconds(15));
+            }
+
+            // Delete folder with removeLease = true should break all leases and succeed
+            var deletedFiles = await _fileManagerService.DeleteFile("temp/", removeLease: true);
+
+            Assert.That(deletedFiles, Has.Count.EqualTo(files.Count));
+            foreach (var file in files)
+            {
+                string name = Path.GetFileNameWithoutExtension(file);
+                string path = $"/temp/{name}.tmp";
+                Assert.That(await _fileManagerService.FileExists(path), Is.False);
+            }
         }
 
         [Test]
