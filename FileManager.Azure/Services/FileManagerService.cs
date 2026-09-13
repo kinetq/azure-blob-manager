@@ -345,8 +345,9 @@ namespace FileManager.Azure.Services
         /// </summary>
         /// <param name="folder"></param>
         /// <param name="newName"></param>
+        /// <param name="removeLease"></param>
         /// <returns></returns>
-        public async Task<BlobDto> RenameFolder(BlobDto folder, string newName)
+        public async Task<BlobDto> RenameFolder(BlobDto folder, string newName, bool removeLease = false)
         {
             var container = await GetContainer();
 
@@ -375,6 +376,11 @@ namespace FileManager.Azure.Services
 
                 // Start the copy operation from the original blob to the new blob
                 await newBlobClient.StartCopyFromUriAsync(originalBlobClient.Uri);
+
+                if (removeLease)
+                {
+                    await BreakLeaseIfActiveAsync(originalBlobClient);
+                }
 
                 // Delete the original blob
                 await originalBlobClient.DeleteIfExistsAsync();
@@ -462,8 +468,9 @@ namespace FileManager.Azure.Services
         /// </summary>
         /// <param name="folder"></param>
         /// <param name="path"></param>
+        /// <param name="removeLease"></param>
         /// <returns></returns>
-        public async Task<BlobDto> MoveFolder(BlobDto folder, string path)
+        public async Task<BlobDto> MoveFolder(BlobDto folder, string path, bool removeLease = false)
         {
             var container = await GetContainer();
 
@@ -496,6 +503,11 @@ namespace FileManager.Azure.Services
 
                 // Start the copy operation from the original blob to the new blob
                 await newBlobClient.StartCopyFromUriAsync(originalBlobClient.Uri);
+
+                if (removeLease)
+                {
+                    await BreakLeaseIfActiveAsync(originalBlobClient);
+                }
 
                 // Delete the original blob
                 await originalBlobClient.DeleteIfExistsAsync();

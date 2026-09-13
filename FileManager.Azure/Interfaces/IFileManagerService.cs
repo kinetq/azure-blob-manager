@@ -18,11 +18,11 @@ namespace FileManager.Azure.Interfaces
         Task<BlobDto> AddFile(string path, string contentType, string name, byte[] file);
         Task<IEnumerable<BlobDto>> GetFolderFiles(string path);
         Task<IEnumerable<BlobDto>> GetChildFolders(string prefix);
-        Task<BlobDto> RenameFolder(BlobDto folder, string newName);
+        Task<BlobDto> RenameFolder(BlobDto folder, string newName, bool removeLease = false);
         Task<BlobDto> RenameFile(BlobDto file, string newName);
         Task<BlobDto> ReplaceFile(BlobDto file, Stream postedFile);
         Task<byte[]> GetFileBytes(string path);
-        Task<BlobDto> MoveFolder(BlobDto folder, string path);
+        Task<BlobDto> MoveFolder(BlobDto folder, string path, bool removeLease = false);
         Task<BlobDto> MoveFile(BlobDto file, string path);
         Task<SummaryInfo> GetSummaryInfo();
         Task<BlobContainerClient> GetContainer();

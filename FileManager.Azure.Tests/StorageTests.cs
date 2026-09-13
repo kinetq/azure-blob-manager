@@ -279,6 +279,7 @@ namespace FileManager.Azure.Tests
         public async Task Test_Rename_Folder()
         {
             var tempFiles = GetFiles();
+            var fileNames = new List<string>();
 
             foreach (var file in tempFiles)
             {
@@ -286,26 +287,132 @@ namespace FileManager.Azure.Tests
 
                 string name = Path.GetFileNameWithoutExtension(file);
                 string path = $"/temp/{name}.tmp";
+                fileNames.Add(name);
 
                 await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
                 Assert.That(await _fileManagerService.FileExists(path), Is.True);
             }
 
-            await _fileManagerService.RenameFolder(new BlobDto
+            var folder = new BlobDto
             {
                 Path = "temp/",
                 BlobType = AzureBlobType.Folder,
                 Name = "temp"
-            }, "temp2");
+            };
 
-            var files = await _fileManagerService.GetFolderFiles("temp2");
-            Assert.That(files.Count(), Is.EqualTo(5));
+            var result = await _fileManagerService.RenameFolder(folder, "temp2");
+
+            // Returned dto should reflect the new path
+            Assert.That(result.Path, Is.EqualTo("temp2/"));
+
+            // All files should exist at the new location
+            var filesInNew = await _fileManagerService.GetFolderFiles("temp2/");
+            Assert.That(filesInNew.Count(), Is.EqualTo(5));
+
+            foreach (var name in fileNames)
+            {
+                Assert.That(await _fileManagerService.FileExists($"/temp2/{name}.tmp"), Is.True);
+            }
+
+            // Old location should be empty
+            var filesInOld = await _fileManagerService.GetFolderFiles("temp/");
+            Assert.That(filesInOld.Count(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task Test_Rename_Folder_With_Remove_Lease()
+        {
+            var tempFiles = GetFiles();
+            var fileNames = new List<string>();
+
+            foreach (var file in tempFiles)
+            {
+                var uploadedBytes = File.ReadAllBytes(file);
+
+                string name = Path.GetFileNameWithoutExtension(file);
+                string path = $"/temp/{name}.tmp";
+                fileNames.Add(name);
+
+                await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
+                Assert.That(await _fileManagerService.FileExists(path), Is.True);
+            }
+
+            // Acquire a lease on each blob to simulate locked blobs
+            var container = await _fileManagerService.GetContainer();
+            await foreach (var blobItem in container.GetBlobsAsync(global::Azure.Storage.Blobs.Models.BlobTraits.None, global::Azure.Storage.Blobs.Models.BlobStates.None, "temp/", default))
+            {
+                var blobClient = container.GetBlobClient(blobItem.Name);
+                var leaseClient = blobClient.GetBlobLeaseClient();
+                await leaseClient.AcquireAsync(duration: TimeSpan.FromSeconds(15));
+            }
+
+            var folder = new BlobDto
+            {
+                Path = "temp/",
+                BlobType = AzureBlobType.Folder,
+                Name = "temp"
+            };
+
+            var result = await _fileManagerService.RenameFolder(folder, "temp2", removeLease: true);
+
+            Assert.That(result.Path, Is.EqualTo("temp2/"));
+
+            var filesInNew = await _fileManagerService.GetFolderFiles("temp2/");
+            Assert.That(filesInNew.Count(), Is.EqualTo(5));
+
+            var filesInOld = await _fileManagerService.GetFolderFiles("temp/");
+            Assert.That(filesInOld.Count(), Is.EqualTo(0));
         }
 
         [Test]
         public async Task Test_Move_Folder()
         {
             var tempFiles = GetFiles();
+            var fileNames = new List<string>();
+
+            foreach (var file in tempFiles)
+            {
+                var uploadedBytes = await File.ReadAllBytesAsync(file);
+
+                string name = Path.GetFileNameWithoutExtension(file);
+                string path = $"/temp/{name}.tmp";
+                fileNames.Add(name);
+
+                await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
+                Assert.That(await _fileManagerService.FileExists(path), Is.True);
+            }
+
+            var folder = new BlobDto
+            {
+                Path = "temp",
+                BlobType = AzureBlobType.Folder,
+                Name = "temp"
+            };
+
+            var result = await _fileManagerService.MoveFolder(folder, "temp2");
+
+            // Returned dto should reflect the new path
+            Assert.That(result.Path, Is.EqualTo("temp2"));
+
+            // All files should exist at the new location
+            var filesInNew = await _fileManagerService.GetFolderFiles("temp2/");
+            Assert.That(filesInNew.Count(), Is.EqualTo(5));
+
+            foreach (var name in fileNames)
+            {
+                Assert.That(await _fileManagerService.FileExists($"/temp2/{name}.tmp"), Is.True);
+            }
+
+            // Old location should be empty
+            var filesInOld = await _fileManagerService.GetFolderFiles("temp/");
+            Assert.That(filesInOld.Count(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task Test_Move_Folder_With_Remove_Lease()
+        {
+            var tempFiles = GetFiles();
+            var fileNames = new List<string>();
 
             foreach (var file in tempFiles)
             {
@@ -313,20 +420,37 @@ namespace FileManager.Azure.Tests
 
                 string name = Path.GetFileNameWithoutExtension(file);
                 string path = $"/temp/{name}.tmp";
+                fileNames.Add(name);
 
                 await _fileManagerService.AddFile(path, "application/pdf", name, uploadedBytes);
                 Assert.That(await _fileManagerService.FileExists(path), Is.True);
             }
 
-            await _fileManagerService.MoveFolder(new BlobDto
+            // Acquire a lease on each blob to simulate locked blobs
+            var container = await _fileManagerService.GetContainer();
+            await foreach (var blobItem in container.GetBlobsAsync(global::Azure.Storage.Blobs.Models.BlobTraits.None, global::Azure.Storage.Blobs.Models.BlobStates.None, "temp/", default))
             {
-                Path = "temp/",
+                var blobClient = container.GetBlobClient(blobItem.Name);
+                var leaseClient = blobClient.GetBlobLeaseClient();
+                await leaseClient.AcquireAsync(duration: TimeSpan.FromSeconds(15));
+            }
+
+            var folder = new BlobDto
+            {
+                Path = "temp",
                 BlobType = AzureBlobType.Folder,
                 Name = "temp"
-            }, "temp2");
+            };
 
-            var files = await _fileManagerService.GetFolderFiles("temp2/");
-            Assert.That(files.Count(), Is.EqualTo(5));
+            var result = await _fileManagerService.MoveFolder(folder, "temp2", removeLease: true);
+
+            Assert.That(result.Path, Is.EqualTo("temp2"));
+
+            var filesInNew = await _fileManagerService.GetFolderFiles("temp2/");
+            Assert.That(filesInNew.Count(), Is.EqualTo(5));
+
+            var filesInOld = await _fileManagerService.GetFolderFiles("temp/");
+            Assert.That(filesInOld.Count(), Is.EqualTo(0));
         }
 
         [Test]
