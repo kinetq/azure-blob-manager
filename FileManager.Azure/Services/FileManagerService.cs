@@ -474,11 +474,6 @@ namespace FileManager.Azure.Services
         {
             var container = await GetContainer();
 
-            if (path[path.Length - 1] != '/')
-            {
-                path = path + "/";
-            }
-
             string oldPath = folder.Path;
             string newPath = oldPath.Replace(folder.Name, path);
 
